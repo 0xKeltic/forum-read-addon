@@ -224,6 +224,23 @@ function extractThreadTitle() {
   return ""
 }
 
+function extractThreadAuthor() {
+  const selectors = [
+    ".header-showthread-info .subtitle a[href*='member.php']",
+    ".threadinfo .subtitle a[href*='member.php']",
+    ".threadinfo a[href*='member.php']"
+  ]
+  for (const sel of selectors) {
+    const nodes = Array.from(document.querySelectorAll(sel))
+    for (let i = nodes.length - 1; i >= 0; i -= 1) {
+      const node = nodes[i]
+      const name = normalizeUserText(node?.textContent || node?.getAttribute("title"))
+      if (isLikelyUsername(name)) return name
+    }
+  }
+  return ""
+}
+
 function getCurrentPageNumber() {
   const url = new URL(window.location.href)
   const page = parseInt(url.searchParams.get("page") || "1", 10)
@@ -325,9 +342,12 @@ function isVBulletinThread() {
   return findPosts().length > 1
 }
 
-function buildPostTexts(posts) {
+function buildPostTexts(posts, options = {}) {
   const list = []
   const threadTitle = extractThreadTitle()
+  const includeThreadTitle = options.includeThreadTitle !== false
+  const threadAuthor = options.threadAuthor || ""
+  const includeThreadCreator = options.includeThreadCreator !== false && Boolean(threadAuthor)
   for (let i = 0; i < posts.length; i += 1) {
     const post = posts[i]
     const author = extractAuthor(post)
@@ -337,10 +357,19 @@ function buildPostTexts(posts) {
     const header = [author, date].filter(Boolean).join(" - ")
     const parts = []
     const isFirst = i === 0
-    if (isFirst && threadTitle) list.push({ text: `Título del hilo: ${threadTitle}`, pauseMs: 500 })
+    if (includeThreadTitle && isFirst && threadTitle) {
+      list.push({ text: `Título del hilo: ${threadTitle}`, pauseMs: 500 })
+    }
     if (author) {
-      if (isFirst) list.push({ text: `Creador del hilo, ${author}`, pauseMs: 250 })
-      else list.push({ text: `Usuario ${author}`, pauseMs: 250 })
+      const isThreadAuthor =
+        threadAuthor &&
+        author &&
+        threadAuthor.toLowerCase() === author.toLowerCase()
+      if (isFirst && includeThreadCreator && isThreadAuthor) {
+        list.push({ text: `Creador del hilo, ${author}`, pauseMs: 250 })
+      } else {
+        list.push({ text: `Usuario ${author}`, pauseMs: 250 })
+      }
     }
     if (header && !author) parts.push(header)
     parts.push(body)
@@ -387,7 +416,13 @@ async function startReadingThread() {
   await loadAutoNextSetting()
   const posts = await findPostsWithRetry()
   if (!posts.length) return { ok: false, error: "No se encontraron posts" }
-  const postTexts = buildPostTexts(posts)
+  const isFirstPage = getCurrentPageNumber() === 1
+  const threadAuthor = isFirstPage ? extractThreadAuthor() : ""
+  const postTexts = buildPostTexts(posts, {
+    includeThreadTitle: !isAutoNextActive(),
+    includeThreadCreator: isFirstPage,
+    threadAuthor
+  })
   if (!postTexts.length) return { ok: false, error: "No hay texto para leer" }
   const fullText = postTexts.map(item => item.text).join("\n")
   const voices = await getVoicesAsync()
