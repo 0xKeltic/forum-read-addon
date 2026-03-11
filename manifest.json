@@ -1,0 +1,20 @@
+{
+  "manifest_version": 3,
+  "name": "Forum Read Addon",
+  "version": "0.1.7",
+  "description": "Lee automáticamente los posts de un hilo vBulletin",
+  "action": {
+    "default_title": "Forum Read",
+    "default_popup": "popup.html"
+  },
+  "permissions": ["activeTab", "tabs", "contextMenus"],
+  "background": {
+    "scripts": ["background.js"]
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"]
+    }
+  ]
+}
