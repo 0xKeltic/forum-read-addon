@@ -61,7 +61,7 @@ browser.contextMenus.onShown.addListener(async (info, tab) => {
 })
 
 browser.commands.onCommand.addListener(async command => {
-  if (command !== "toggle-read") return
+  if (command !== "toggle-read" && command !== "next-post") return
   const tabs = await browser.tabs.query({ active: true, currentWindow: true })
   const tab = tabs[0]
   if (!tab?.id) return
@@ -71,5 +71,10 @@ browser.commands.onCommand.addListener(async command => {
   } catch {
     return
   }
-  await browser.tabs.sendMessage(tab.id, { type: "vb-read-toggle" })
+  if (command === "toggle-read") {
+    await browser.tabs.sendMessage(tab.id, { type: "vb-read-toggle" })
+  }
+  if (command === "next-post") {
+    await browser.tabs.sendMessage(tab.id, { type: "vb-read-next" })
+  }
 })

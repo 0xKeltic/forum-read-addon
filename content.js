@@ -2,6 +2,7 @@ let isReading = false
 let utterQueue = []
 let currentIndex = 0
 let autoNextEnabled = false
+let ignoreOnEnd = false
 
 function detectLanguageFromDom() {
   const htmlLang = document.documentElement?.lang?.trim()
@@ -364,7 +365,9 @@ function buildPostTexts(posts, options = {}) {
     const parts = []
     const isFirst = i === 0
     if (includeThreadTitle && isFirst && threadTitle) {
-      list.push({ text: `Título del hilo: ${threadTitle}`, pauseMs: 500 })
+      list.push({ text: `Título del hilo: ${threadTitle}`, pauseMs: 500, postIndex: i })
+      const pageNumber = getCurrentPageNumber()
+      list.push({ text: `Página: ${pageNumber}`, pauseMs: 250, postIndex: i })
     }
     if (author) {
       const isThreadAuthor =
@@ -372,15 +375,15 @@ function buildPostTexts(posts, options = {}) {
         author &&
         threadAuthor.toLowerCase() === author.toLowerCase()
       if (isFirst && includeThreadCreator && isThreadAuthor) {
-        list.push({ text: `Creador del hilo, ${author}`, pauseMs: 250 })
+        list.push({ text: `Creador del hilo, ${author}`, pauseMs: 250, postIndex: i })
       } else {
-        list.push({ text: `Usuario ${author}`, pauseMs: 250 })
+        list.push({ text: `Usuario ${author}`, pauseMs: 250, postIndex: i })
       }
     }
     if (header && !author) parts.push(header)
     parts.push(body)
     const postText = parts.join("\n")
-    if (postText) list.push({ text: postText, pauseMs: 500 })
+    if (postText) list.push({ text: postText, pauseMs: 500, postIndex: i })
   }
   return list
 }
@@ -431,12 +434,15 @@ async function startReadingThread() {
     threadAuthor
   })
   if (!postTexts.length) return { ok: false, error: "No hay texto para leer" }
-  if (!hasNextPage) postTexts.push({ text: "Fin del hilo", pauseMs: 0 })
+  if (!hasNextPage) {
+    postTexts.push({ text: "Fin del hilo", pauseMs: 0, postIndex: posts.length - 1 })
+  }
   const fullText = postTexts.map(item => item.text).join("\n")
   const voices = await getVoicesAsync()
   const lang = detectLanguageFromText(fullText) || detectLanguageFromDom()
   const voice = pickVoiceForLang(lang, voices)
   utterQueue = []
+  ignoreOnEnd = false
   for (const postItem of postTexts) {
     const chunks = splitIntoChunks(postItem.text)
     for (let i = 0; i < chunks.length; i += 1) {
@@ -448,7 +454,7 @@ async function startReadingThread() {
       utter.pitch = 1
       utter.volume = 1
       const pauseMs = i === chunks.length - 1 ? postItem.pauseMs || 0 : 0
-      utterQueue.push({ utter, pauseMs })
+      utterQueue.push({ utter, pauseMs, postIndex: postItem.postIndex ?? 0 })
     }
   }
   isReading = true
@@ -471,6 +477,10 @@ function playNext() {
   }
   const { utter, pauseMs } = item
   utter.onend = () => {
+    if (ignoreOnEnd) {
+      ignoreOnEnd = false
+      return
+    }
     currentIndex += 1
     if (pauseMs > 0) setTimeout(playNext, pauseMs)
     else playNext()
@@ -484,8 +494,30 @@ function stopReading() {
   isReading = false
   currentIndex = 0
   utterQueue = []
+  ignoreOnEnd = false
   speechSynthesis.cancel()
   if (clearAutoNext) setAutoNextActive(false)
+}
+
+function skipToNextPost() {
+  if (!isReading) return { ok: false }
+  const currentItem = utterQueue[currentIndex]
+  if (!currentItem) return { ok: false }
+  const currentPost = currentItem.postIndex ?? -1
+  let nextIndex = -1
+  for (let i = currentIndex + 1; i < utterQueue.length; i += 1) {
+    const item = utterQueue[i]
+    if ((item.postIndex ?? currentPost) > currentPost) {
+      nextIndex = i
+      break
+    }
+  }
+  if (nextIndex === -1) return { ok: false }
+  ignoreOnEnd = true
+  currentIndex = nextIndex
+  speechSynthesis.cancel()
+  setTimeout(playNext, 0)
+  return { ok: true }
 }
 
 browser.runtime.onMessage.addListener(message => {
@@ -503,6 +535,9 @@ browser.runtime.onMessage.addListener(message => {
       return { ok: true }
     }
     return startReadingThread()
+  }
+  if (message?.type === "vb-read-next") {
+    return skipToNextPost()
   }
 })
 
