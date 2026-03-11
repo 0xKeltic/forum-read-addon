@@ -524,6 +524,9 @@ browser.runtime.onMessage.addListener(message => {
   if (message?.type === "vb-check") {
     return checkThreadForUi().then(isThread => ({ ok: true, isThread }))
   }
+  if (message?.type === "vb-read-status") {
+    return { ok: true, isReading }
+  }
   if (message?.type === "vb-read-start") return startReadingThread()
   if (message?.type === "vb-read-stop") {
     stopReading()

@@ -1,5 +1,6 @@
 const statusEl = document.getElementById("status")
 const playBtn = document.getElementById("play")
+const nextBtn = document.getElementById("next")
 const stopBtn = document.getElementById("stop")
 const autoNextEl = document.getElementById("autoNext")
 
@@ -10,8 +11,13 @@ function setStatus(text, isError = false) {
 
 function setDisabled(disabled) {
   playBtn.disabled = disabled
+  nextBtn.disabled = disabled
   stopBtn.disabled = disabled
   autoNextEl.disabled = disabled
+}
+
+function setNextEnabled(enabled) {
+  nextBtn.disabled = !enabled
 }
 
 async function getActiveTab() {
@@ -40,19 +46,29 @@ async function updateAvailability() {
     return
   }
   let isThread = false
+  let isReading = false
   try {
     const resp = await browser.tabs.sendMessage(tab.id, { type: "vb-check" })
     isThread = Boolean(resp?.isThread)
+    if (isThread) {
+      const status = await browser.tabs.sendMessage(tab.id, { type: "vb-read-status" })
+      isReading = Boolean(status?.isReading)
+    }
   } catch {}
   if (!isThread) {
     await new Promise(resolve => setTimeout(resolve, 250))
     try {
       const resp = await browser.tabs.sendMessage(tab.id, { type: "vb-check" })
       isThread = Boolean(resp?.isThread)
+      if (isThread) {
+        const status = await browser.tabs.sendMessage(tab.id, { type: "vb-read-status" })
+        isReading = Boolean(status?.isReading)
+      }
     } catch {}
   }
   if (isThread) {
     setDisabled(false)
+    setNextEnabled(isReading)
     setStatus("")
     return
   }
@@ -66,7 +82,10 @@ playBtn.addEventListener("click", async () => {
   const tab = await getActiveTab()
   if (!tab?.id) return setStatus("No hay pestaña activa")
   const resp = await browser.tabs.sendMessage(tab.id, { type: "vb-read-start" })
-  if (resp?.ok) setStatus("Reproduciendo")
+  if (resp?.ok) {
+    setNextEnabled(true)
+    setStatus("Reproduciendo")
+  }
   else setStatus(resp?.error || "No se pudo iniciar")
 })
 
@@ -74,5 +93,14 @@ stopBtn.addEventListener("click", async () => {
   const tab = await getActiveTab()
   if (!tab?.id) return setStatus("No hay pestaña activa")
   await browser.tabs.sendMessage(tab.id, { type: "vb-read-stop" })
+  setNextEnabled(false)
   setStatus("Detenido")
+})
+
+nextBtn.addEventListener("click", async () => {
+  const tab = await getActiveTab()
+  if (!tab?.id) return setStatus("No hay pestaña activa")
+  const resp = await browser.tabs.sendMessage(tab.id, { type: "vb-read-next" })
+  if (resp?.ok) setStatus("Saltado")
+  else setStatus("No hay siguiente post")
 })

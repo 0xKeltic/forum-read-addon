@@ -1,4 +1,5 @@
 const MENU_READ = "vb-read-start"
+const MENU_NEXT = "vb-read-next"
 const MENU_STOP = "vb-read-stop"
 
 function createMenus() {
@@ -9,6 +10,15 @@ function createMenus() {
     contexts: ["page"],
     icons: {
       "48": "images/icon/play-button-green-icon.webp"
+    },
+    visible: false
+  })
+  browser.contextMenus.create({
+    id: MENU_NEXT,
+    title: "Saltar al siguiente post (F4)",
+    contexts: ["page"],
+    icons: {
+      "48": "images/icon/music-player-play-next-square-icon.png"
     },
     visible: false
   })
@@ -42,6 +52,15 @@ browser.contextMenus.onClicked.addListener(async (info, tab) => {
   if (info.menuItemId === MENU_READ) {
     await browser.tabs.sendMessage(tab.id, { type: "vb-read-start" })
   }
+  if (info.menuItemId === MENU_NEXT) {
+    let isReading = false
+    try {
+      const resp = await browser.tabs.sendMessage(tab.id, { type: "vb-read-status" })
+      isReading = Boolean(resp?.isReading)
+    } catch {}
+    if (!isReading) return
+    await browser.tabs.sendMessage(tab.id, { type: "vb-read-next" })
+  }
   if (info.menuItemId === MENU_STOP) {
     await browser.tabs.sendMessage(tab.id, { type: "vb-read-stop" })
   }
@@ -49,13 +68,19 @@ browser.contextMenus.onClicked.addListener(async (info, tab) => {
 
 browser.contextMenus.onShown.addListener(async (info, tab) => {
   let isThread = false
+  let isReading = false
   if (tab?.id) {
     try {
       const resp = await browser.tabs.sendMessage(tab.id, { type: "vb-check" })
       isThread = Boolean(resp?.isThread)
+      if (isThread) {
+        const status = await browser.tabs.sendMessage(tab.id, { type: "vb-read-status" })
+        isReading = Boolean(status?.isReading)
+      }
     } catch {}
   }
   await browser.contextMenus.update(MENU_READ, { visible: isThread })
+  await browser.contextMenus.update(MENU_NEXT, { visible: isThread && isReading })
   await browser.contextMenus.update(MENU_STOP, { visible: isThread })
   browser.contextMenus.refresh()
 })
@@ -75,6 +100,12 @@ browser.commands.onCommand.addListener(async command => {
     await browser.tabs.sendMessage(tab.id, { type: "vb-read-toggle" })
   }
   if (command === "next-post") {
+    try {
+      const status = await browser.tabs.sendMessage(tab.id, { type: "vb-read-status" })
+      if (!status?.isReading) return
+    } catch {
+      return
+    }
     await browser.tabs.sendMessage(tab.id, { type: "vb-read-next" })
   }
 })
