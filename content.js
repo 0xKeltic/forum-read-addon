@@ -487,6 +487,13 @@ browser.runtime.onMessage.addListener(message => {
     stopReading()
     return { ok: true }
   }
+  if (message?.type === "vb-read-toggle") {
+    if (isReading) {
+      stopReading()
+      return { ok: true }
+    }
+    return startReadingThread()
+  }
 })
 
 if (isAutoNextActive()) {

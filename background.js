@@ -5,7 +5,7 @@ function createMenus() {
   browser.contextMenus.removeAll()
   browser.contextMenus.create({
     id: MENU_READ,
-    title: "Leer posts del hilo",
+    title: "Leer posts del hilo (F8)",
     contexts: ["page"],
     icons: {
       "48": "images/icon/play-button-green-icon.webp"
@@ -13,7 +13,7 @@ function createMenus() {
   })
   browser.contextMenus.create({
     id: MENU_STOP,
-    title: "Detener lectura",
+    title: "Detener lectura (F8)",
     contexts: ["page"],
     icons: {
       "48": "images/icon/music-player-stop-square-icon.webp"
@@ -37,4 +37,12 @@ browser.contextMenus.onClicked.addListener(async (info, tab) => {
   if (info.menuItemId === MENU_STOP) {
     await browser.tabs.sendMessage(tab.id, { type: "vb-read-stop" })
   }
+})
+
+browser.commands.onCommand.addListener(async command => {
+  if (command !== "toggle-read") return
+  const tabs = await browser.tabs.query({ active: true, currentWindow: true })
+  const tab = tabs[0]
+  if (!tab?.id) return
+  await browser.tabs.sendMessage(tab.id, { type: "vb-read-toggle" })
 })
