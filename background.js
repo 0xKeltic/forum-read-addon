@@ -53,12 +53,6 @@ browser.contextMenus.onClicked.addListener(async (info, tab) => {
     await browser.tabs.sendMessage(tab.id, { type: "vb-read-start" })
   }
   if (info.menuItemId === MENU_NEXT) {
-    let isReading = false
-    try {
-      const resp = await browser.tabs.sendMessage(tab.id, { type: "vb-read-status" })
-      isReading = Boolean(resp?.isReading)
-    } catch {}
-    if (!isReading) return
     await browser.tabs.sendMessage(tab.id, { type: "vb-read-next" })
   }
   if (info.menuItemId === MENU_STOP) {
@@ -68,19 +62,14 @@ browser.contextMenus.onClicked.addListener(async (info, tab) => {
 
 browser.contextMenus.onShown.addListener(async (info, tab) => {
   let isThread = false
-  let isReading = false
   if (tab?.id) {
     try {
       const resp = await browser.tabs.sendMessage(tab.id, { type: "vb-check" })
       isThread = Boolean(resp?.isThread)
-      if (isThread) {
-        const status = await browser.tabs.sendMessage(tab.id, { type: "vb-read-status" })
-        isReading = Boolean(status?.isReading)
-      }
     } catch {}
   }
   await browser.contextMenus.update(MENU_READ, { visible: isThread })
-  await browser.contextMenus.update(MENU_NEXT, { visible: isThread && isReading })
+  await browser.contextMenus.update(MENU_NEXT, { visible: isThread })
   await browser.contextMenus.update(MENU_STOP, { visible: isThread })
   browser.contextMenus.refresh()
 })
@@ -100,12 +89,6 @@ browser.commands.onCommand.addListener(async command => {
     await browser.tabs.sendMessage(tab.id, { type: "vb-read-toggle" })
   }
   if (command === "next-post") {
-    try {
-      const status = await browser.tabs.sendMessage(tab.id, { type: "vb-read-status" })
-      if (!status?.isReading) return
-    } catch {
-      return
-    }
     await browser.tabs.sendMessage(tab.id, { type: "vb-read-next" })
   }
 })
