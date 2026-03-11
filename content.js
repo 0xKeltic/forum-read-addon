@@ -418,12 +418,14 @@ async function startReadingThread() {
   if (!posts.length) return { ok: false, error: "No se encontraron posts" }
   const isFirstPage = getCurrentPageNumber() === 1
   const threadAuthor = isFirstPage ? extractThreadAuthor() : ""
+  const hasNextPage = Boolean(findNextPageUrl())
   const postTexts = buildPostTexts(posts, {
     includeThreadTitle: !isAutoNextActive(),
     includeThreadCreator: isFirstPage,
     threadAuthor
   })
   if (!postTexts.length) return { ok: false, error: "No hay texto para leer" }
+  if (!hasNextPage) postTexts.push({ text: "Fin del hilo", pauseMs: 0 })
   const fullText = postTexts.map(item => item.text).join("\n")
   const voices = await getVoicesAsync()
   const lang = detectLanguageFromText(fullText) || detectLanguageFromDom()
@@ -453,13 +455,12 @@ function playNext() {
   if (!isReading) return
   const item = utterQueue[currentIndex]
   if (!item) {
-    const shouldAutoNext = autoNextEnabled
-    stopReading(!shouldAutoNext)
-    if (shouldAutoNext) {
-      setTimeout(() => {
-        goToNextPageIfAvailable()
-      }, 500)
+    if (autoNextEnabled) {
+      const moved = goToNextPageIfAvailable()
+      stopReading(!moved)
+      return
     }
+    stopReading()
     return
   }
   const { utter, pauseMs } = item
