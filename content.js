@@ -3,6 +3,7 @@ let utterQueue = []
 let currentIndex = 0
 let autoNextEnabled = false
 let ignoreOnEnd = false
+let omitDescriptorsEnabled = false
 
 function detectLanguageFromDom() {
   const htmlLang = document.documentElement?.lang?.trim()
@@ -287,10 +288,12 @@ function isAutoNextActive() {
 
 async function loadAutoNextSetting() {
   try {
-    const data = await browser.storage.local.get("autoNext")
+    const data = await browser.storage.local.get(["autoNext", "omitDescriptors"])
     autoNextEnabled = Boolean(data?.autoNext)
+    omitDescriptorsEnabled = Boolean(data?.omitDescriptors)
   } catch {
     autoNextEnabled = false
+    omitDescriptorsEnabled = false
   }
   if (!autoNextEnabled) setAutoNextActive(false)
 }
@@ -355,6 +358,7 @@ function buildPostTexts(posts, options = {}) {
   const includeThreadTitle = options.includeThreadTitle !== false
   const threadAuthor = options.threadAuthor || ""
   const includeThreadCreator = options.includeThreadCreator !== false && Boolean(threadAuthor)
+  const omitDescriptors = options.omitDescriptors === true
   for (let i = 0; i < posts.length; i += 1) {
     const post = posts[i]
     const author = extractAuthor(post)
@@ -365,11 +369,14 @@ function buildPostTexts(posts, options = {}) {
     const parts = []
     const isFirst = i === 0
     if (includeThreadTitle && isFirst && threadTitle) {
-      list.push({ text: `Título del hilo: ${threadTitle}`, pauseMs: 500, postIndex: i })
-      const pageNumber = getCurrentPageNumber()
-      list.push({ text: `Página: ${pageNumber}`, pauseMs: 250, postIndex: i })
+      const titleText = omitDescriptors ? threadTitle : `Título del hilo: ${threadTitle}`
+      list.push({ text: titleText, pauseMs: 500, postIndex: i })
+      if (!omitDescriptors) {
+        const pageNumber = getCurrentPageNumber()
+        list.push({ text: `Página: ${pageNumber}`, pauseMs: 250, postIndex: i })
+      }
     }
-    if (author) {
+    if (author && !omitDescriptors) {
       const isThreadAuthor =
         threadAuthor &&
         author &&
@@ -380,7 +387,7 @@ function buildPostTexts(posts, options = {}) {
         list.push({ text: `Usuario ${author}`, pauseMs: 250, postIndex: i })
       }
     }
-    if (header && !author) parts.push(header)
+    if (!omitDescriptors && header && !author) parts.push(header)
     parts.push(body)
     const postText = parts.join("\n")
     if (postText) list.push({ text: postText, pauseMs: 500, postIndex: i })
@@ -431,10 +438,11 @@ async function startReadingThread() {
   const postTexts = buildPostTexts(posts, {
     includeThreadTitle: !isAutoNextActive(),
     includeThreadCreator: isFirstPage,
-    threadAuthor
+    threadAuthor,
+    omitDescriptors: omitDescriptorsEnabled
   })
   if (!postTexts.length) return { ok: false, error: "No hay texto para leer" }
-  if (!hasNextPage) {
+  if (!hasNextPage && !omitDescriptorsEnabled) {
     postTexts.push({ text: "Fin del hilo", pauseMs: 0, postIndex: posts.length - 1 })
   }
   const fullText = postTexts.map(item => item.text).join("\n")

@@ -3,6 +3,7 @@ const playBtn = document.getElementById("play")
 const nextBtn = document.getElementById("next")
 const stopBtn = document.getElementById("stop")
 const autoNextEl = document.getElementById("autoNext")
+const omitDescriptorsEl = document.getElementById("omitDescriptors")
 
 function setStatus(text, isError = false) {
   statusEl.textContent = text
@@ -14,6 +15,7 @@ function setDisabled(disabled) {
   nextBtn.disabled = disabled
   stopBtn.disabled = disabled
   autoNextEl.disabled = disabled
+  omitDescriptorsEl.disabled = disabled
 }
 
 function setNextEnabled(enabled) {
@@ -26,12 +28,17 @@ async function getActiveTab() {
 }
 
 async function loadSettings() {
-  const data = await browser.storage.local.get("autoNext")
+  const data = await browser.storage.local.get(["autoNext", "omitDescriptors"])
   autoNextEl.checked = Boolean(data?.autoNext)
+  omitDescriptorsEl.checked = Boolean(data?.omitDescriptors)
 }
 
 autoNextEl.addEventListener("change", async () => {
   await browser.storage.local.set({ autoNext: autoNextEl.checked })
+})
+
+omitDescriptorsEl.addEventListener("change", async () => {
+  await browser.storage.local.set({ omitDescriptors: omitDescriptorsEl.checked })
 })
 
 loadSettings()
