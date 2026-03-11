@@ -192,6 +192,37 @@ function extractDate(post) {
   return ""
 }
 
+function cleanThreadTitle(text) {
+  if (!text) return ""
+  let title = normalizeText(text)
+  const separators = [" - ", " | ", " — ", " – "]
+  for (const sep of separators) {
+    const idx = title.indexOf(sep)
+    if (idx > 0) {
+      title = title.slice(0, idx)
+      break
+    }
+  }
+  return title
+}
+
+function extractThreadTitle() {
+  const selectors = [
+    "h1.threadtitle",
+    "#threadtitle",
+    ".threadtitle",
+    "h1"
+  ]
+  for (const sel of selectors) {
+    const node = document.querySelector(sel)
+    const title = cleanThreadTitle(node?.textContent || "")
+    if (title) return title
+  }
+  const docTitle = cleanThreadTitle(document.title || "")
+  if (docTitle) return docTitle
+  return ""
+}
+
 function findPosts() {
   const roots = new Set()
   const messageNodes = Array.from(document.querySelectorAll('[id^="post_message_"]'))
@@ -231,14 +262,21 @@ function isVBulletinThread() {
 
 function buildPostTexts(posts) {
   const list = []
-  for (const post of posts) {
+  const threadTitle = extractThreadTitle()
+  for (let i = 0; i < posts.length; i += 1) {
+    const post = posts[i]
     const author = extractAuthor(post)
     const date = extractDate(post)
     const body = extractPostText(post)
     if (!body) continue
     const header = [author, date].filter(Boolean).join(" - ")
     const parts = []
-    if (author) parts.push(`El usuario ${author} dice:`)
+    const isFirst = i === 0
+    if (isFirst && threadTitle) list.push(`Título del hilo: ${threadTitle}`)
+    if (author) {
+      if (isFirst) parts.push(`Creador del hilo, ${author}`)
+      else parts.push(`Usuario ${author}`)
+    }
     if (header && !author) parts.push(header)
     parts.push(body)
     const postText = parts.join("\n")

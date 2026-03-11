@@ -6,12 +6,18 @@ function createMenus() {
   browser.contextMenus.create({
     id: MENU_READ,
     title: "Leer posts del hilo",
-    contexts: ["page"]
+    contexts: ["page"],
+    icons: {
+      "48": "images/icon/play-button-green-icon.webp"
+    }
   })
   browser.contextMenus.create({
     id: MENU_STOP,
     title: "Detener lectura",
-    contexts: ["page"]
+    contexts: ["page"],
+    icons: {
+      "48": "images/icon/music-player-stop-square-icon.webp"
+    }
   })
 }
 

@@ -5,7 +5,13 @@
   "description": "Lee automáticamente los posts de un hilo vBulletin",
   "action": {
     "default_title": "Forum Read",
-    "default_popup": "popup.html"
+    "default_popup": "popup.html",
+    "default_icon": {
+      "48": "images/icon/icons8-audio-book-48.png"
+    }
+  },
+  "icons": {
+    "48": "images/icon/icons8-audio-book-48.png"
   },
   "permissions": ["activeTab", "tabs", "contextMenus"],
   "background": {
