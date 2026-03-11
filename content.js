@@ -342,6 +342,18 @@ function isVBulletinThread() {
   return findPosts().length > 1
 }
 
+async function checkIsVBulletinThread() {
+  if (isVBulletinThread()) return true
+  const posts = await findPostsWithRetry(2, 300)
+  if (posts.length > 0) return true
+  try {
+    const url = new URL(window.location.href)
+    const hasThreadId = Boolean(url.searchParams.get("t"))
+    if (hasThreadId && extractThreadTitle()) return true
+  } catch {}
+  return false
+}
+
 function buildPostTexts(posts, options = {}) {
   const list = []
   const threadTitle = extractThreadTitle()
@@ -483,6 +495,9 @@ function stopReading() {
 }
 
 browser.runtime.onMessage.addListener(message => {
+  if (message?.type === "vb-check") {
+    return checkIsVBulletinThread().then(isThread => ({ ok: true, isThread }))
+  }
   if (message?.type === "vb-read-start") return startReadingThread()
   if (message?.type === "vb-read-stop") {
     stopReading()
