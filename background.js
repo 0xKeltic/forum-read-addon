@@ -29,7 +29,7 @@ function createMenus() {
     title: "Reanudar lectura (F8)",
     contexts: ["page"],
     icons: {
-      "48": "images/icon/play-button-green-icon.webp"
+      "48": "images/icon/resume-button-grey-icon.png"
     },
     visible: false
   })
