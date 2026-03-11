@@ -15,6 +15,13 @@
         font-size: 14px;
         margin: 0 0 10px 0;
       }
+      .option {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 13px;
+        margin: 8px 0;
+      }
       button {
         width: 100%;
         margin: 6px 0;
@@ -39,6 +46,10 @@
   </head>
   <body>
     <h1>Leer hilo vBulletin (beta 0.1.7)</h1>
+    <label class="option">
+      <input type="checkbox" id="autoNext" />
+      Pasar de página automáticamente
+    </label>
     <button id="play">Leer posts</button>
     <button id="stop" class="secondary">Detener</button>
     <div class="status" id="status"></div>

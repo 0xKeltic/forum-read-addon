@@ -1,6 +1,7 @@
 let isReading = false
 let utterQueue = []
 let currentIndex = 0
+let autoNextEnabled = false
 
 function detectLanguageFromDom() {
   const htmlLang = document.documentElement?.lang?.trim()
@@ -223,6 +224,70 @@ function extractThreadTitle() {
   return ""
 }
 
+function getCurrentPageNumber() {
+  const url = new URL(window.location.href)
+  const page = parseInt(url.searchParams.get("page") || "1", 10)
+  return Number.isFinite(page) && page > 0 ? page : 1
+}
+
+function getThreadIdFromUrl(url) {
+  const parsed = new URL(url, window.location.href)
+  return parsed.searchParams.get("t")
+}
+
+function findNextPageUrl() {
+  const currentUrl = new URL(window.location.href)
+  const currentPage = getCurrentPageNumber()
+  const currentThread = currentUrl.searchParams.get("t")
+  const links = Array.from(document.querySelectorAll('a[href*="page="]'))
+  let bestUrl = ""
+  let bestPage = Infinity
+  for (const link of links) {
+    const href = link.getAttribute("href")
+    if (!href) continue
+    const parsed = new URL(href, currentUrl)
+    if (currentThread && parsed.searchParams.get("t") !== currentThread) continue
+    if (!currentThread && parsed.pathname !== currentUrl.pathname) continue
+    const pageValue = parseInt(parsed.searchParams.get("page") || "", 10)
+    if (!Number.isFinite(pageValue)) continue
+    if (pageValue > currentPage && pageValue < bestPage) {
+      bestPage = pageValue
+      bestUrl = parsed.href
+    }
+  }
+  return bestUrl || ""
+}
+
+function setAutoNextActive(active) {
+  if (active) sessionStorage.setItem("vbReadAutoNextActive", "1")
+  else sessionStorage.removeItem("vbReadAutoNextActive")
+}
+
+function isAutoNextActive() {
+  return sessionStorage.getItem("vbReadAutoNextActive") === "1"
+}
+
+async function loadAutoNextSetting() {
+  try {
+    const data = await browser.storage.local.get("autoNext")
+    autoNextEnabled = Boolean(data?.autoNext)
+  } catch {
+    autoNextEnabled = false
+  }
+  if (!autoNextEnabled) setAutoNextActive(false)
+}
+
+function goToNextPageIfAvailable() {
+  const nextUrl = findNextPageUrl()
+  if (!nextUrl) {
+    setAutoNextActive(false)
+    return false
+  }
+  setAutoNextActive(true)
+  window.location.href = nextUrl
+  return true
+}
+
 function findPosts() {
   const roots = new Set()
   const messageNodes = Array.from(document.querySelectorAll('[id^="post_message_"]'))
@@ -272,15 +337,15 @@ function buildPostTexts(posts) {
     const header = [author, date].filter(Boolean).join(" - ")
     const parts = []
     const isFirst = i === 0
-    if (isFirst && threadTitle) list.push(`Título del hilo: ${threadTitle}`)
+    if (isFirst && threadTitle) list.push({ text: `Título del hilo: ${threadTitle}`, pauseMs: 500 })
     if (author) {
-      if (isFirst) parts.push(`Creador del hilo, ${author}`)
-      else parts.push(`Usuario ${author}`)
+      if (isFirst) list.push({ text: `Creador del hilo, ${author}`, pauseMs: 250 })
+      else list.push({ text: `Usuario ${author}`, pauseMs: 250 })
     }
     if (header && !author) parts.push(header)
     parts.push(body)
     const postText = parts.join("\n")
-    if (postText) list.push(postText)
+    if (postText) list.push({ text: postText, pauseMs: 500 })
   }
   return list
 }
@@ -319,17 +384,18 @@ async function findPostsWithRetry(tries = 3, delayMs = 500) {
 async function startReadingThread() {
   if (isReading) return { ok: true }
   if (!isVBulletinThread()) return { ok: false, error: "No parece un hilo vBulletin" }
+  await loadAutoNextSetting()
   const posts = await findPostsWithRetry()
   if (!posts.length) return { ok: false, error: "No se encontraron posts" }
   const postTexts = buildPostTexts(posts)
   if (!postTexts.length) return { ok: false, error: "No hay texto para leer" }
-  const fullText = postTexts.join("\n")
+  const fullText = postTexts.map(item => item.text).join("\n")
   const voices = await getVoicesAsync()
   const lang = detectLanguageFromText(fullText) || detectLanguageFromDom()
   const voice = pickVoiceForLang(lang, voices)
   utterQueue = []
-  for (const postText of postTexts) {
-    const chunks = splitIntoChunks(postText)
+  for (const postItem of postTexts) {
+    const chunks = splitIntoChunks(postItem.text)
     for (let i = 0; i < chunks.length; i += 1) {
       const chunk = chunks[i]
       const utter = new SpeechSynthesisUtterance(chunk)
@@ -338,7 +404,8 @@ async function startReadingThread() {
       utter.rate = 1
       utter.pitch = 1
       utter.volume = 1
-      utterQueue.push({ utter, pauseMs: i === chunks.length - 1 ? 500 : 0 })
+      const pauseMs = i === chunks.length - 1 ? postItem.pauseMs || 0 : 0
+      utterQueue.push({ utter, pauseMs })
     }
   }
   isReading = true
@@ -351,7 +418,13 @@ function playNext() {
   if (!isReading) return
   const item = utterQueue[currentIndex]
   if (!item) {
-    stopReading()
+    const shouldAutoNext = autoNextEnabled
+    stopReading(!shouldAutoNext)
+    if (shouldAutoNext) {
+      setTimeout(() => {
+        goToNextPageIfAvailable()
+      }, 500)
+    }
     return
   }
   const { utter, pauseMs } = item
@@ -364,10 +437,13 @@ function playNext() {
 }
 
 function stopReading() {
+  let clearAutoNext = true
+  if (arguments.length > 0) clearAutoNext = Boolean(arguments[0])
   isReading = false
   currentIndex = 0
   utterQueue = []
   speechSynthesis.cancel()
+  if (clearAutoNext) setAutoNextActive(false)
 }
 
 browser.runtime.onMessage.addListener(message => {
@@ -377,5 +453,9 @@ browser.runtime.onMessage.addListener(message => {
     return { ok: true }
   }
 })
+
+if (isAutoNextActive()) {
+  startReadingThread()
+}
 
 window.__vbReaderAutoStarted = true
