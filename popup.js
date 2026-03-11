@@ -1,5 +1,7 @@
 const statusEl = document.getElementById("status")
 const playBtn = document.getElementById("play")
+const pauseBtn = document.getElementById("pause")
+const resumeBtn = document.getElementById("resume")
 const nextBtn = document.getElementById("next")
 const stopBtn = document.getElementById("stop")
 const autoNextEl = document.getElementById("autoNext")
@@ -12,6 +14,8 @@ function setStatus(text, isError = false) {
 
 function setDisabled(disabled) {
   playBtn.disabled = disabled
+  pauseBtn.disabled = disabled
+  resumeBtn.disabled = disabled
   nextBtn.disabled = disabled
   stopBtn.disabled = disabled
   autoNextEl.disabled = disabled
@@ -79,6 +83,22 @@ playBtn.addEventListener("click", async () => {
     setStatus("Reproduciendo")
   }
   else setStatus(resp?.error || "No se pudo iniciar")
+})
+
+pauseBtn.addEventListener("click", async () => {
+  const tab = await getActiveTab()
+  if (!tab?.id) return setStatus("No hay pestaña activa")
+  const resp = await browser.tabs.sendMessage(tab.id, { type: "vb-read-pause" })
+  if (resp?.ok) setStatus("Pausado")
+  else setStatus(resp?.error || "No se pudo pausar")
+})
+
+resumeBtn.addEventListener("click", async () => {
+  const tab = await getActiveTab()
+  if (!tab?.id) return setStatus("No hay pestaña activa")
+  const resp = await browser.tabs.sendMessage(tab.id, { type: "vb-read-resume" })
+  if (resp?.ok) setStatus("Reanudado")
+  else setStatus(resp?.error || "No se pudo reanudar")
 })
 
 stopBtn.addEventListener("click", async () => {

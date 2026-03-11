@@ -24,12 +24,6 @@
     }
   ],
   "commands": {
-    "toggle-read": {
-      "suggested_key": {
-        "default": "F8"
-      },
-      "description": "Iniciar o detener lectura del hilo"
-    },
     "next-post": {
       "suggested_key": {
         "default": "F4"

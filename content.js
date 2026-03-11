@@ -1,9 +1,12 @@
 let isReading = false
+let isPaused = false
 let utterQueue = []
 let currentIndex = 0
 let autoNextEnabled = false
 let ignoreOnEnd = false
 let omitDescriptorsEnabled = false
+let f8Timer = null
+let f8HandledLongPress = false
 
 function detectLanguageFromDom() {
   const htmlLang = document.documentElement?.lang?.trim()
@@ -427,7 +430,13 @@ async function findPostsWithRetry(tries = 3, delayMs = 500) {
 }
 
 async function startReadingThread() {
-  if (isReading) return { ok: true }
+  if (isReading) {
+    if (isPaused) {
+      resumeReading()
+      return { ok: true, resumed: true }
+    }
+    return { ok: true }
+  }
   if (!isVBulletinThread()) return { ok: false, error: "No parece un hilo vBulletin" }
   await loadAutoNextSetting()
   const posts = await findPostsWithRetry()
@@ -466,13 +475,14 @@ async function startReadingThread() {
     }
   }
   isReading = true
+  isPaused = false
   currentIndex = 0
   playNext()
   return { ok: true }
 }
 
 function playNext() {
-  if (!isReading) return
+  if (!isReading || isPaused) return
   const item = utterQueue[currentIndex]
   if (!item) {
     if (autoNextEnabled) {
@@ -496,10 +506,29 @@ function playNext() {
   speechSynthesis.speak(utter)
 }
 
+function pauseReading() {
+  if (!isReading || isPaused) return { ok: false }
+  isPaused = true
+  try {
+    speechSynthesis.pause()
+  } catch {}
+  return { ok: true }
+}
+
+function resumeReading() {
+  if (!isReading || !isPaused) return { ok: false }
+  isPaused = false
+  try {
+    speechSynthesis.resume()
+  } catch {}
+  return { ok: true }
+}
+
 function stopReading() {
   let clearAutoNext = true
   if (arguments.length > 0) clearAutoNext = Boolean(arguments[0])
   isReading = false
+  isPaused = false
   currentIndex = 0
   utterQueue = []
   ignoreOnEnd = false
@@ -533,17 +562,19 @@ browser.runtime.onMessage.addListener(message => {
     return checkThreadForUi().then(isThread => ({ ok: true, isThread }))
   }
   if (message?.type === "vb-read-status") {
-    return { ok: true, isReading }
+    return { ok: true, isReading, isPaused }
   }
   if (message?.type === "vb-read-start") return startReadingThread()
+  if (message?.type === "vb-read-pause") return pauseReading()
+  if (message?.type === "vb-read-resume") return resumeReading()
   if (message?.type === "vb-read-stop") {
     stopReading()
     return { ok: true }
   }
   if (message?.type === "vb-read-toggle") {
     if (isReading) {
-      stopReading()
-      return { ok: true }
+      if (isPaused) return resumeReading()
+      return pauseReading()
     }
     return startReadingThread()
   }
@@ -557,3 +588,43 @@ if (isAutoNextActive()) {
 }
 
 window.__vbReaderAutoStarted = true
+
+function isEditableTarget(target) {
+  const el = target
+  if (!el) return false
+  const tag = el.tagName?.toLowerCase()
+  if (tag === "input" || tag === "textarea" || tag === "select") return true
+  return Boolean(el.isContentEditable)
+}
+
+function handleF8ShortPress() {
+  if (isReading) {
+    if (isPaused) resumeReading()
+    else pauseReading()
+    return
+  }
+  startReadingThread()
+}
+
+window.addEventListener("keydown", event => {
+  if (event.key !== "F8") return
+  if (event.repeat) return
+  if (isEditableTarget(event.target)) return
+  f8HandledLongPress = false
+  if (f8Timer) clearTimeout(f8Timer)
+  f8Timer = setTimeout(() => {
+    f8HandledLongPress = true
+    stopReading()
+  }, 2000)
+})
+
+window.addEventListener("keyup", event => {
+  if (event.key !== "F8") return
+  if (isEditableTarget(event.target)) return
+  if (f8Timer) {
+    clearTimeout(f8Timer)
+    f8Timer = null
+  }
+  if (f8HandledLongPress) return
+  handleF8ShortPress()
+})

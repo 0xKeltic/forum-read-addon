@@ -36,6 +36,18 @@
       button.secondary {
         background: #4a5568;
       }
+      button.start {
+        background: #2f855a;
+      }
+      button.resume {
+        background: #2b6cb0;
+      }
+      button.next {
+        background: #dd6b20;
+      }
+      button.danger {
+        background: #c53030;
+      }
       button:disabled {
         background: #a0aec0;
         color: #f7fafc;
@@ -67,9 +79,11 @@
       <input type="checkbox" id="omitDescriptors" />
       <span>Omitir palabras descriptivas</span>
     </label>
-    <button id="play">Leer posts del hilo (F8)</button>
-    <button id="next" class="secondary">Saltar al siguiente post (F4)</button>
-    <button id="stop" class="secondary">Detener lectura (F8)</button>
+    <button id="play" class="start">Iniciar lectura (F8)</button>
+    <button id="pause" class="secondary">Pausar lectura (F8)</button>
+    <button id="resume" class="resume">Reanudar lectura (F8)</button>
+    <button id="next" class="next">Saltar al siguiente post (F4)</button>
+    <button id="stop" class="danger">Detener lectura (mantener F8)</button>
     <div class="status" id="status"></div>
     <script src="popup.js"></script>
   </body>
