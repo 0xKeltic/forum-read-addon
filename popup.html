@@ -36,11 +36,24 @@
       button.secondary {
         background: #4a5568;
       }
+      button:disabled {
+        background: #a0aec0;
+        color: #f7fafc;
+        cursor: not-allowed;
+        opacity: 0.8;
+      }
+      label.option input:disabled + span {
+        color: #9aa0a6;
+      }
       .status {
         font-size: 12px;
         color: #444;
         margin-top: 8px;
         min-height: 16px;
+      }
+      .status.error {
+        color: #b00020;
+        font-weight: 700;
       }
     </style>
   </head>
@@ -48,7 +61,7 @@
     <h1>Leer hilo vBulletin (beta 0.1.7)</h1>
     <label class="option">
       <input type="checkbox" id="autoNext" />
-      Pasar de página automáticamente
+      <span>Pasar de página automáticamente</span>
     </label>
     <button id="play">Leer posts del hilo (F8)</button>
     <button id="stop" class="secondary">Detener lectura (F8)</button>

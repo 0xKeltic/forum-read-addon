@@ -3,8 +3,15 @@ const playBtn = document.getElementById("play")
 const stopBtn = document.getElementById("stop")
 const autoNextEl = document.getElementById("autoNext")
 
-function setStatus(text) {
+function setStatus(text, isError = false) {
   statusEl.textContent = text
+  statusEl.classList.toggle("error", Boolean(isError))
+}
+
+function setDisabled(disabled) {
+  playBtn.disabled = disabled
+  stopBtn.disabled = disabled
+  autoNextEl.disabled = disabled
 }
 
 async function getActiveTab() {
@@ -22,6 +29,38 @@ autoNextEl.addEventListener("change", async () => {
 })
 
 loadSettings()
+
+async function updateAvailability() {
+  setDisabled(true)
+  setStatus("Comprobando hilo...")
+  const tab = await getActiveTab()
+  if (!tab?.id) {
+    setDisabled(true)
+    setStatus("No hay pestaña activa", true)
+    return
+  }
+  let isThread = false
+  try {
+    const resp = await browser.tabs.sendMessage(tab.id, { type: "vb-check" })
+    isThread = Boolean(resp?.isThread)
+  } catch {}
+  if (!isThread) {
+    await new Promise(resolve => setTimeout(resolve, 250))
+    try {
+      const resp = await browser.tabs.sendMessage(tab.id, { type: "vb-check" })
+      isThread = Boolean(resp?.isThread)
+    } catch {}
+  }
+  if (isThread) {
+    setDisabled(false)
+    setStatus("")
+    return
+  }
+  setDisabled(true)
+  setStatus("No es un hilo vBulletin", true)
+}
+
+updateAvailability()
 
 playBtn.addEventListener("click", async () => {
   const tab = await getActiveTab()

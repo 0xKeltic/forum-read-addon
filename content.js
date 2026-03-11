@@ -342,6 +342,12 @@ function isVBulletinThread() {
   return findPosts().length > 1
 }
 
+async function checkThreadForUi() {
+  if (isVBulletinThread()) return true
+  const posts = await findPostsWithRetry(2, 200)
+  return posts.length > 0
+}
+
 function buildPostTexts(posts, options = {}) {
   const list = []
   const threadTitle = extractThreadTitle()
@@ -483,6 +489,9 @@ function stopReading() {
 }
 
 browser.runtime.onMessage.addListener(message => {
+  if (message?.type === "vb-check") {
+    return checkThreadForUi().then(isThread => ({ ok: true, isThread }))
+  }
   if (message?.type === "vb-read-start") return startReadingThread()
   if (message?.type === "vb-read-stop") {
     stopReading()

@@ -9,7 +9,8 @@ function createMenus() {
     contexts: ["page"],
     icons: {
       "48": "images/icon/play-button-green-icon.webp"
-    }
+    },
+    visible: false
   })
   browser.contextMenus.create({
     id: MENU_STOP,
@@ -17,7 +18,8 @@ function createMenus() {
     contexts: ["page"],
     icons: {
       "48": "images/icon/music-player-stop-square-icon.webp"
-    }
+    },
+    visible: false
   })
 }
 
@@ -31,6 +33,12 @@ browser.runtime.onStartup.addListener(() => {
 
 browser.contextMenus.onClicked.addListener(async (info, tab) => {
   if (!tab?.id) return
+  let isThread = false
+  try {
+    const resp = await browser.tabs.sendMessage(tab.id, { type: "vb-check" })
+    isThread = Boolean(resp?.isThread)
+  } catch {}
+  if (!isThread) return
   if (info.menuItemId === MENU_READ) {
     await browser.tabs.sendMessage(tab.id, { type: "vb-read-start" })
   }
@@ -39,10 +47,29 @@ browser.contextMenus.onClicked.addListener(async (info, tab) => {
   }
 })
 
+browser.contextMenus.onShown.addListener(async (info, tab) => {
+  let isThread = false
+  if (tab?.id) {
+    try {
+      const resp = await browser.tabs.sendMessage(tab.id, { type: "vb-check" })
+      isThread = Boolean(resp?.isThread)
+    } catch {}
+  }
+  await browser.contextMenus.update(MENU_READ, { visible: isThread })
+  await browser.contextMenus.update(MENU_STOP, { visible: isThread })
+  browser.contextMenus.refresh()
+})
+
 browser.commands.onCommand.addListener(async command => {
   if (command !== "toggle-read") return
   const tabs = await browser.tabs.query({ active: true, currentWindow: true })
   const tab = tabs[0]
   if (!tab?.id) return
+  try {
+    const resp = await browser.tabs.sendMessage(tab.id, { type: "vb-check" })
+    if (!resp?.isThread) return
+  } catch {
+    return
+  }
   await browser.tabs.sendMessage(tab.id, { type: "vb-read-toggle" })
 })
