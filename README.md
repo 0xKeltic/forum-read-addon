@@ -20,3 +20,7 @@
 
 ## Quitar el addon
 - Cierra Firefox o elimina la extensión temporal desde about:debugging#/runtime/this-firefox.
+
+## Recursos de sonidos UI
+- Puedes descargar sonidos para la extensión desde:
+  - https://pixabay.com/es/sound-effects/search/ui/?pagi=3

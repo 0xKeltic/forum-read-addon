@@ -7,6 +7,8 @@ let ignoreOnEnd = false
 let omitDescriptorsEnabled = false
 let f8Timer = null
 let f8HandledLongPress = false
+const separatorSoundUrl = browser.runtime.getURL("sounds/47313572-ui-navigation-sound-270299.mp3")
+let separatorAudio = null
 
 function detectLanguageFromDom() {
   const htmlLang = document.documentElement?.lang?.trim()
@@ -64,8 +66,34 @@ function getVoicesAsync() {
   })
 }
 
+function simplifyLinksForSpeech(text) {
+  if (!text) return ""
+  const toDomain = raw => {
+    let value = String(raw || "").trim()
+    if (!value) return ""
+    if (!/^https?:\/\//i.test(value)) value = `https://${value}`
+    try {
+      const host = new URL(value).hostname.toLowerCase()
+      return host.replace(/^www\./, "")
+    } catch {
+      const fallback = value
+        .replace(/^https?:\/\//i, "")
+        .replace(/^www\./i, "")
+        .split(/[/?#:]/)[0]
+        .toLowerCase()
+      return fallback
+    }
+  }
+  const pattern = /\b((?:https?:\/\/|www\.)[^\s<>"')\]]+)/gi
+  return text.replace(pattern, match => {
+    const domain = toDomain(match)
+    if (!domain) return "Enlace"
+    return `Enlace de ${domain}`
+  })
+}
+
 function normalizeText(text) {
-  return text.replace(/\s+/g, " ").trim()
+  return simplifyLinksForSpeech(text).replace(/\s+/g, " ").trim()
 }
 
 function removeUnwantedNodes(root) {
@@ -420,6 +448,44 @@ function delay(ms) {
   return new Promise(resolve => setTimeout(resolve, ms))
 }
 
+function stopSeparatorSound() {
+  if (!separatorAudio) return
+  separatorAudio.onended = null
+  separatorAudio.onerror = null
+  try {
+    separatorAudio.pause()
+    separatorAudio.currentTime = 0
+  } catch {}
+  separatorAudio = null
+}
+
+function playSeparatorSound() {
+  return new Promise(resolve => {
+    if (!omitDescriptorsEnabled) {
+      resolve()
+      return
+    }
+    stopSeparatorSound()
+    const audio = new Audio(separatorSoundUrl)
+    separatorAudio = audio
+    const finish = () => {
+      if (separatorAudio === audio) separatorAudio = null
+      resolve()
+    }
+    audio.onended = finish
+    audio.onerror = finish
+    audio.volume = 0.45
+    try {
+      const playPromise = audio.play()
+      if (playPromise && typeof playPromise.then === "function") {
+        playPromise.catch(finish)
+      }
+    } catch {
+      finish()
+    }
+  })
+}
+
 async function findPostsWithRetry(tries = 3, delayMs = 500) {
   for (let i = 0; i < tries; i += 1) {
     const posts = findPosts()
@@ -460,6 +526,7 @@ async function startReadingThread() {
   const voice = pickVoiceForLang(lang, voices)
   utterQueue = []
   ignoreOnEnd = false
+  stopSeparatorSound()
   for (const postItem of postTexts) {
     const chunks = splitIntoChunks(postItem.text)
     for (let i = 0; i < chunks.length; i += 1) {
@@ -500,8 +567,20 @@ function playNext() {
       return
     }
     currentIndex += 1
-    if (pauseMs > 0) setTimeout(playNext, pauseMs)
-    else playNext()
+    const nextItem = utterQueue[currentIndex]
+    const currentPostIndex = item.postIndex ?? -1
+    const nextPostIndex = nextItem?.postIndex ?? currentPostIndex
+    const shouldPlaySeparator = omitDescriptorsEnabled && nextItem && nextPostIndex > currentPostIndex
+    const continueReading = () => {
+      if (!isReading || isPaused) return
+      if (pauseMs > 0) setTimeout(playNext, pauseMs)
+      else playNext()
+    }
+    if (shouldPlaySeparator) {
+      playSeparatorSound().then(continueReading)
+      return
+    }
+    continueReading()
   }
   speechSynthesis.speak(utter)
 }
@@ -512,6 +591,11 @@ function pauseReading() {
   try {
     speechSynthesis.pause()
   } catch {}
+  if (separatorAudio) {
+    try {
+      separatorAudio.pause()
+    } catch {}
+  }
   return { ok: true }
 }
 
@@ -521,6 +605,20 @@ function resumeReading() {
   try {
     speechSynthesis.resume()
   } catch {}
+  if (separatorAudio) {
+    try {
+      const playPromise = separatorAudio.play()
+      if (playPromise && typeof playPromise.then === "function") {
+        playPromise.catch(() => {
+          stopSeparatorSound()
+          setTimeout(playNext, 0)
+        })
+      }
+    } catch {
+      stopSeparatorSound()
+      setTimeout(playNext, 0)
+    }
+  }
   return { ok: true }
 }
 
@@ -532,6 +630,7 @@ function stopReading() {
   currentIndex = 0
   utterQueue = []
   ignoreOnEnd = false
+  stopSeparatorSound()
   speechSynthesis.cancel()
   if (clearAutoNext) setAutoNextActive(false)
 }
@@ -552,6 +651,7 @@ function skipToNextPost() {
   if (nextIndex === -1) return { ok: false }
   ignoreOnEnd = true
   currentIndex = nextIndex
+  stopSeparatorSound()
   speechSynthesis.cancel()
   setTimeout(playNext, 0)
   return { ok: true }
