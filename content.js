@@ -9,6 +9,7 @@ let f8Timer = null
 let f8HandledLongPress = false
 const separatorSoundUrl = browser.runtime.getURL("sounds/47313572-ui-navigation-sound-270299.mp3")
 let separatorAudio = null
+let separatorAudioContext = null
 
 function detectLanguageFromDom() {
   const htmlLang = document.documentElement?.lang?.trim()
@@ -459,6 +460,43 @@ function stopSeparatorSound() {
   separatorAudio = null
 }
 
+function playSeparatorFallbackBeep() {
+  return new Promise(resolve => {
+    const AudioCtx = window.AudioContext || window.webkitAudioContext
+    if (!AudioCtx) {
+      resolve()
+      return
+    }
+    if (!separatorAudioContext) separatorAudioContext = new AudioCtx()
+    const ctx = separatorAudioContext
+    const startTone = () => {
+      const now = ctx.currentTime
+      const oscillator = ctx.createOscillator()
+      const gain = ctx.createGain()
+      oscillator.type = "sine"
+      oscillator.frequency.setValueAtTime(920, now)
+      gain.gain.setValueAtTime(0.0001, now)
+      gain.gain.exponentialRampToValueAtTime(0.08, now + 0.01)
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.12)
+      oscillator.connect(gain)
+      gain.connect(ctx.destination)
+      oscillator.onended = () => resolve()
+      oscillator.start(now)
+      oscillator.stop(now + 0.13)
+    }
+    if (ctx.state === "suspended") {
+      const resumePromise = ctx.resume()
+      if (resumePromise && typeof resumePromise.then === "function") {
+        resumePromise.then(startTone).catch(() => resolve())
+      } else {
+        startTone()
+      }
+      return
+    }
+    startTone()
+  })
+}
+
 function playSeparatorSound() {
   return new Promise(resolve => {
     if (!omitDescriptorsEnabled) {
@@ -468,20 +506,25 @@ function playSeparatorSound() {
     stopSeparatorSound()
     const audio = new Audio(separatorSoundUrl)
     separatorAudio = audio
-    const finish = () => {
+    const finishSuccess = () => {
       if (separatorAudio === audio) separatorAudio = null
       resolve()
     }
-    audio.onended = finish
-    audio.onerror = finish
+    const finishFailure = () => {
+      if (separatorAudio === audio) separatorAudio = null
+      playSeparatorFallbackBeep().then(resolve)
+    }
+    audio.onended = finishSuccess
+    audio.onerror = finishFailure
     audio.volume = 0.45
+    audio.preload = "auto"
     try {
       const playPromise = audio.play()
       if (playPromise && typeof playPromise.then === "function") {
-        playPromise.catch(finish)
+        playPromise.catch(finishFailure)
       }
     } catch {
-      finish()
+      finishFailure()
     }
   })
 }
