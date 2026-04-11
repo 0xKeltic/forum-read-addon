@@ -30,5 +30,15 @@
       },
       "description": "Saltar al siguiente comentario"
     }
+  },
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "forum-read-addon-private-20260411@local",
+      "strict_min_version": "109.0",
+      "data_collection_permissions": {
+        "required": ["none"],
+        "optional": []
+      }
+    }
   }
 }
