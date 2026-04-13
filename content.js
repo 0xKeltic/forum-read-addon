@@ -529,13 +529,15 @@ function playSeparatorSound() {
   })
 }
 
-async function findPostsWithRetry(tries = 3, delayMs = 500) {
+async function findPostsWithRetry(tries = 3, delayMs = 500, minPosts = 1) {
+  let lastPosts = []
   for (let i = 0; i < tries; i += 1) {
     const posts = findPosts()
-    if (posts.length) return posts
+    lastPosts = posts
+    if (posts.length >= minPosts) return posts
     await delay(delayMs)
   }
-  return []
+  return lastPosts
 }
 
 async function startReadingThread() {
@@ -548,7 +550,9 @@ async function startReadingThread() {
   }
   if (!isVBulletinThread()) return { ok: false, error: "No parece un hilo vBulletin" }
   await loadAutoNextSetting()
-  const posts = await findPostsWithRetry()
+  const autoStarted = isAutoNextActive()
+  const minPostsForStart = autoStarted ? 2 : 1
+  const posts = await findPostsWithRetry(8, 500, minPostsForStart)
   if (!posts.length) return { ok: false, error: "No se encontraron posts" }
   const isFirstPage = getCurrentPageNumber() === 1
   const threadAuthor = isFirstPage ? extractThreadAuthor() : ""
@@ -727,7 +731,13 @@ browser.runtime.onMessage.addListener(message => {
 })
 
 if (isAutoNextActive()) {
-  startReadingThread()
+  if (document.readyState === "loading") {
+    window.addEventListener("DOMContentLoaded", () => {
+      startReadingThread()
+    }, { once: true })
+  } else {
+    startReadingThread()
+  }
 }
 
 window.__vbReaderAutoStarted = true
