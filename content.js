@@ -7,9 +7,8 @@ let ignoreOnEnd = false
 let omitDescriptorsEnabled = false
 let f8Timer = null
 let f8HandledLongPress = false
-const separatorSoundUrl = browser.runtime.getURL("sounds/47313572-ui-navigation-sound-270299.mp3")
-let separatorAudio = null
-let separatorAudioContext = null
+
+console.log("[VBReader] Script cargado en:", window.location.href)
 
 function detectLanguageFromDom() {
   const htmlLang = document.documentElement?.lang?.trim()
@@ -306,16 +305,20 @@ function findNextPageUrl() {
       bestUrl = parsed.href
     }
   }
+  console.log("[VBReader] findNextPageUrl - nextUrl:", bestUrl)
   return bestUrl || ""
 }
 
 function setAutoNextActive(active) {
   if (active) sessionStorage.setItem("vbReadAutoNextActive", "1")
   else sessionStorage.removeItem("vbReadAutoNextActive")
+  console.log("[VBReader] setAutoNextActive:", active)
 }
 
 function isAutoNextActive() {
-  return sessionStorage.getItem("vbReadAutoNextActive") === "1"
+  const active = sessionStorage.getItem("vbReadAutoNextActive") === "1"
+  console.log("[VBReader] isAutoNextActive:", active)
+  return active
 }
 
 async function loadAutoNextSetting() {
@@ -323,6 +326,7 @@ async function loadAutoNextSetting() {
     const data = await browser.storage.local.get(["autoNext", "omitDescriptors"])
     autoNextEnabled = Boolean(data?.autoNext)
     omitDescriptorsEnabled = Boolean(data?.omitDescriptors)
+    console.log("[VBReader] loadAutoNextSetting - autoNextEnabled:", autoNextEnabled, "omitDescriptorsEnabled:", omitDescriptorsEnabled)
   } catch {
     autoNextEnabled = false
     omitDescriptorsEnabled = false
@@ -331,19 +335,32 @@ async function loadAutoNextSetting() {
 }
 
 function goToNextPageIfAvailable() {
+  console.log("[VBReader] goToNextPageIfAvailable llamado")
   const nextUrl = findNextPageUrl()
   if (!nextUrl) {
+    console.log("[VBReader] goToNextPageIfAvailable - No hay siguiente página")
     setAutoNextActive(false)
     return false
   }
+  
+  console.log("[VBReader] goToNextPageIfAvailable - Navegando a:", nextUrl)
+  
+  sessionStorage.setItem("vbReadAutoNextActive", "1")
+  sessionStorage.setItem("vbReadOmitDescriptors", omitDescriptorsEnabled ? "1" : "0")
+  
+  speechSynthesis.cancel()
+  
   setAutoNextActive(true)
   window.location.href = nextUrl
   return true
 }
 
 function findPosts() {
+  console.log("[VBReader] findPosts - Buscando posts en:", window.location.href)
   const roots = new Set()
   const messageNodes = Array.from(document.querySelectorAll('[id^="post_message_"]'))
+  console.log("[VBReader] findPosts - messageNodes encontrados:", messageNodes.length)
+  
   for (const node of messageNodes) {
     const root =
       node.closest(".postbit_wrapper") ||
@@ -352,7 +369,11 @@ function findPosts() {
       node.parentElement
     if (root) roots.add(root)
   }
-  if (roots.size > 0) return Array.from(roots)
+  if (roots.size > 0) {
+    console.log("[VBReader] findPosts - roots encontrados (method1):", roots.size)
+    return Array.from(roots)
+  }
+  
   const selectors = [
     ".postbit_wrapper",
     ".postbit",
@@ -367,35 +388,52 @@ function findPosts() {
   ]
   for (const sel of selectors) {
     const nodes = Array.from(document.querySelectorAll(sel))
-    if (nodes.length > 0) return nodes
+    if (nodes.length > 0) {
+      console.log("[VBReader] findPosts - encontrados con selector", sel, ":", nodes.length)
+      return nodes
+    }
   }
+  console.log("[VBReader] findPosts - No se encontraron posts")
   return []
 }
 
 function isVBulletinThread() {
-  if (document.querySelector('meta[name="generator"][content*="vBulletin"]')) return true
-  if (document.querySelector("#posts")) return true
-  return findPosts().length > 1
+  const hasMeta = !!document.querySelector('meta[name="generator"][content*="vBulletin"]')
+  const hasPosts = !!document.querySelector("#posts")
+  const postsLength = findPosts().length > 1
+  
+  const result = hasMeta || hasPosts || postsLength
+  console.log("[VBReader] isVBulletinThread:", result)
+  return result
 }
 
 async function checkThreadForUi() {
-  if (isVBulletinThread()) return true
+  console.log("[VBReader] checkThreadForUi - iniciando")
+  if (isVBulletinThread()) {
+    console.log("[VBReader] checkThreadForUi - es vBulletin thread")
+    return true
+  }
   const posts = await findPostsWithRetry(2, 200)
-  return posts.length > 0
+  const result = posts.length > 0
+  console.log("[VBReader] checkThreadForUi - posts encontrados:", posts.length, "result:", result)
+  return result
 }
 
 function buildPostTexts(posts, options = {}) {
+  console.log("[VBReader] buildPostTexts - posts a procesar:", posts.length)
   const list = []
   const threadTitle = extractThreadTitle()
   const includeThreadTitle = options.includeThreadTitle !== false
   const threadAuthor = options.threadAuthor || ""
   const includeThreadCreator = options.includeThreadCreator !== false && Boolean(threadAuthor)
   const omitDescriptors = options.omitDescriptors === true
+  
   for (let i = 0; i < posts.length; i += 1) {
     const post = posts[i]
     const author = extractAuthor(post)
     const date = extractDate(post)
     const body = extractPostText(post)
+    
     if (!body) continue
     const header = [author, date].filter(Boolean).join(" - ")
     const parts = []
@@ -424,6 +462,7 @@ function buildPostTexts(posts, options = {}) {
     const postText = parts.join("\n")
     if (postText) list.push({ text: postText, pauseMs: 500, postIndex: i })
   }
+  console.log("[VBReader] buildPostTexts - Total items generados:", list.length)
   return list
 }
 
@@ -449,91 +488,12 @@ function delay(ms) {
   return new Promise(resolve => setTimeout(resolve, ms))
 }
 
-function stopSeparatorSound() {
-  if (!separatorAudio) return
-  separatorAudio.onended = null
-  separatorAudio.onerror = null
-  try {
-    separatorAudio.pause()
-    separatorAudio.currentTime = 0
-  } catch {}
-  separatorAudio = null
-}
-
-function playSeparatorFallbackBeep() {
-  return new Promise(resolve => {
-    const AudioCtx = window.AudioContext || window.webkitAudioContext
-    if (!AudioCtx) {
-      resolve()
-      return
-    }
-    if (!separatorAudioContext) separatorAudioContext = new AudioCtx()
-    const ctx = separatorAudioContext
-    const startTone = () => {
-      const now = ctx.currentTime
-      const oscillator = ctx.createOscillator()
-      const gain = ctx.createGain()
-      oscillator.type = "sine"
-      oscillator.frequency.setValueAtTime(920, now)
-      gain.gain.setValueAtTime(0.0001, now)
-      gain.gain.exponentialRampToValueAtTime(0.08, now + 0.01)
-      gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.12)
-      oscillator.connect(gain)
-      gain.connect(ctx.destination)
-      oscillator.onended = () => resolve()
-      oscillator.start(now)
-      oscillator.stop(now + 0.13)
-    }
-    if (ctx.state === "suspended") {
-      const resumePromise = ctx.resume()
-      if (resumePromise && typeof resumePromise.then === "function") {
-        resumePromise.then(startTone).catch(() => resolve())
-      } else {
-        startTone()
-      }
-      return
-    }
-    startTone()
-  })
-}
-
-function playSeparatorSound() {
-  return new Promise(resolve => {
-    if (!omitDescriptorsEnabled) {
-      resolve()
-      return
-    }
-    stopSeparatorSound()
-    const audio = new Audio(separatorSoundUrl)
-    separatorAudio = audio
-    const finishSuccess = () => {
-      if (separatorAudio === audio) separatorAudio = null
-      resolve()
-    }
-    const finishFailure = () => {
-      if (separatorAudio === audio) separatorAudio = null
-      playSeparatorFallbackBeep().then(resolve)
-    }
-    audio.onended = finishSuccess
-    audio.onerror = finishFailure
-    audio.volume = 0.45
-    audio.preload = "auto"
-    try {
-      const playPromise = audio.play()
-      if (playPromise && typeof playPromise.then === "function") {
-        playPromise.catch(finishFailure)
-      }
-    } catch {
-      finishFailure()
-    }
-  })
-}
-
 async function findPostsWithRetry(tries = 3, delayMs = 500, minPosts = 1) {
   let lastPosts = []
   for (let i = 0; i < tries; i += 1) {
     const posts = findPosts()
     lastPosts = posts
+    console.log(`[VBReader] findPostsWithRetry - intento ${i+1}/${tries}, posts: ${posts.length}`)
     if (posts.length >= minPosts) return posts
     await delay(delayMs)
   }
@@ -541,39 +501,51 @@ async function findPostsWithRetry(tries = 3, delayMs = 500, minPosts = 1) {
 }
 
 async function startReadingThread() {
+  console.log("[VBReader] startReadingThread - iniciando en:", window.location.href)
+  
   if (isReading) {
     if (isPaused) {
+      console.log("[VBReader] startReadingThread - reanudando")
       resumeReading()
       return { ok: true, resumed: true }
     }
     return { ok: true }
   }
+  
   if (!isVBulletinThread()) return { ok: false, error: "No parece un hilo vBulletin" }
+  
   await loadAutoNextSetting()
   const autoStarted = isAutoNextActive()
   const minPostsForStart = autoStarted ? 2 : 1
+  
   const posts = await findPostsWithRetry(8, 500, minPostsForStart)
   if (!posts.length) return { ok: false, error: "No se encontraron posts" }
+  
   const isFirstPage = getCurrentPageNumber() === 1
   const threadAuthor = isFirstPage ? extractThreadAuthor() : ""
   const hasNextPage = Boolean(findNextPageUrl())
+  
   const postTexts = buildPostTexts(posts, {
     includeThreadTitle: !isAutoNextActive(),
     includeThreadCreator: isFirstPage,
     threadAuthor,
     omitDescriptors: omitDescriptorsEnabled
   })
+  
   if (!postTexts.length) return { ok: false, error: "No hay texto para leer" }
+  
   if (!hasNextPage && !omitDescriptorsEnabled) {
     postTexts.push({ text: "Fin del hilo", pauseMs: 0, postIndex: posts.length - 1 })
   }
+  
   const fullText = postTexts.map(item => item.text).join("\n")
   const voices = await getVoicesAsync()
   const lang = detectLanguageFromText(fullText) || detectLanguageFromDom()
   const voice = pickVoiceForLang(lang, voices)
+  
   utterQueue = []
   ignoreOnEnd = false
-  stopSeparatorSound()
+  
   for (const postItem of postTexts) {
     const chunks = splitIntoChunks(postItem.text)
     for (let i = 0; i < chunks.length; i += 1) {
@@ -588,6 +560,9 @@ async function startReadingThread() {
       utterQueue.push({ utter, pauseMs, postIndex: postItem.postIndex ?? 0 })
     }
   }
+  
+  console.log("[VBReader] startReadingThread - utterQueue final length:", utterQueue.length)
+  
   isReading = true
   isPaused = false
   currentIndex = 0
@@ -596,9 +571,13 @@ async function startReadingThread() {
 }
 
 function playNext() {
+  console.log("[VBReader] playNext - currentIndex:", currentIndex, "queueLength:", utterQueue.length)
+  
   if (!isReading || isPaused) return
+  
   const item = utterQueue[currentIndex]
   if (!item) {
+    console.log("[VBReader] playNext - no hay más items")
     if (autoNextEnabled) {
       const moved = goToNextPageIfAvailable()
       stopReading(!moved)
@@ -607,29 +586,48 @@ function playNext() {
     stopReading()
     return
   }
+  
   const { utter, pauseMs } = item
+  console.log(`[VBReader] playNext - reproduciendo item ${currentIndex}`)
+  
   utter.onend = () => {
+    console.log("[VBReader] utter.onend - terminado item", currentIndex)
     if (ignoreOnEnd) {
       ignoreOnEnd = false
+      currentIndex++
+      playNext()
       return
     }
-    currentIndex += 1
-    const nextItem = utterQueue[currentIndex]
-    const currentPostIndex = item.postIndex ?? -1
-    const nextPostIndex = nextItem?.postIndex ?? currentPostIndex
-    const shouldPlaySeparator = omitDescriptorsEnabled && nextItem && nextPostIndex > currentPostIndex
+    
+    currentIndex++
+    
     const continueReading = () => {
       if (!isReading || isPaused) return
-      if (pauseMs > 0) setTimeout(playNext, pauseMs)
-      else playNext()
+      if (pauseMs > 0) {
+        setTimeout(playNext, pauseMs)
+      } else {
+        playNext()
+      }
     }
-    if (shouldPlaySeparator) {
-      playSeparatorSound().then(continueReading)
-      return
-    }
+    
     continueReading()
   }
-  speechSynthesis.speak(utter)
+  
+  utter.onerror = (err) => {
+    console.error("[VBReader] utter.onerror:", err)
+    currentIndex++
+    playNext()
+  }
+  
+  try {
+    speechSynthesis.cancel()
+    speechSynthesis.speak(utter)
+    console.log("[VBReader] playNext - speak ejecutado")
+  } catch (err) {
+    console.error("[VBReader] playNext - error:", err)
+    currentIndex++
+    playNext()
+  }
 }
 
 function pauseReading() {
@@ -638,11 +636,6 @@ function pauseReading() {
   try {
     speechSynthesis.pause()
   } catch {}
-  if (separatorAudio) {
-    try {
-      separatorAudio.pause()
-    } catch {}
-  }
   return { ok: true }
 }
 
@@ -652,32 +645,18 @@ function resumeReading() {
   try {
     speechSynthesis.resume()
   } catch {}
-  if (separatorAudio) {
-    try {
-      const playPromise = separatorAudio.play()
-      if (playPromise && typeof playPromise.then === "function") {
-        playPromise.catch(() => {
-          stopSeparatorSound()
-          setTimeout(playNext, 0)
-        })
-      }
-    } catch {
-      stopSeparatorSound()
-      setTimeout(playNext, 0)
-    }
-  }
   return { ok: true }
 }
 
 function stopReading() {
   let clearAutoNext = true
   if (arguments.length > 0) clearAutoNext = Boolean(arguments[0])
+  console.log("[VBReader] stopReading")
   isReading = false
   isPaused = false
   currentIndex = 0
   utterQueue = []
   ignoreOnEnd = false
-  stopSeparatorSound()
   speechSynthesis.cancel()
   if (clearAutoNext) setAutoNextActive(false)
 }
@@ -698,13 +677,13 @@ function skipToNextPost() {
   if (nextIndex === -1) return { ok: false }
   ignoreOnEnd = true
   currentIndex = nextIndex
-  stopSeparatorSound()
   speechSynthesis.cancel()
   setTimeout(playNext, 0)
   return { ok: true }
 }
 
 browser.runtime.onMessage.addListener(message => {
+  console.log("[VBReader] Mensaje recibido:", message?.type)
   if (message?.type === "vb-check") {
     return checkThreadForUi().then(isThread => ({ ok: true, isThread }))
   }
@@ -731,12 +710,27 @@ browser.runtime.onMessage.addListener(message => {
 })
 
 if (isAutoNextActive()) {
+  console.log("[VBReader] Inicialización auto-next")
+  isReading = false
+  isPaused = false
+  currentIndex = 0
+  utterQueue = []
+  ignoreOnEnd = false
+  
   if (document.readyState === "loading") {
     window.addEventListener("DOMContentLoaded", () => {
-      startReadingThread()
+      setTimeout(() => {
+        const savedOmit = sessionStorage.getItem("vbReadOmitDescriptors")
+        if (savedOmit === "1") omitDescriptorsEnabled = true
+        startReadingThread()
+      }, 500)
     }, { once: true })
   } else {
-    startReadingThread()
+    setTimeout(() => {
+      const savedOmit = sessionStorage.getItem("vbReadOmitDescriptors")
+      if (savedOmit === "1") omitDescriptorsEnabled = true
+      startReadingThread()
+    }, 500)
   }
 }
 
@@ -781,3 +775,9 @@ window.addEventListener("keyup", event => {
   if (f8HandledLongPress) return
   handleF8ShortPress()
 })
+
+window.addEventListener("beforeunload", () => {
+  sessionStorage.removeItem("vbReadOmitDescriptors")
+})
+
+console.log("[VBReader] Script completamente cargado")
