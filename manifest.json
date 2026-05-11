@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Forum Read Addon",
-  "version": "0.2.24",
+  "version": "0.2.28",
   "description": "Lee automáticamente los posts de un hilo vBulletin",
   "action": {
     "default_title": "Forum Read",
@@ -34,7 +34,7 @@
   "browser_specific_settings": {
     "gecko": {
       "id": "forum-read-addon-private-20260411@local",
-      "strict_min_version": "109.0",
+      "strict_min_version": "142.0",
       "data_collection_permissions": {
         "required": ["none"],
         "optional": []
